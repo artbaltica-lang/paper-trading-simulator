@@ -1,6 +1,7 @@
 ﻿import { useState } from 'react'
 import './App.css'
 import Portfolio from './components/Portfolio'
+import Trade from './components/Trade'
 
 const screens = [
   {
@@ -80,6 +81,8 @@ function App() {
         </div>
         {activeScreen === 'portfolio' ? (
           <Portfolio onStartTrading={() => setActiveScreen('trade')} />
+        ) : activeScreen === 'trade' ? (
+          <Trade />
         ) : (
         <section className="workspace-card" aria-labelledby="workspace-title" key={screen.id}>
           <div className="card-heading">
