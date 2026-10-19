@@ -1,0 +1,27 @@
+.portfolio-demo-note { margin-top: 24px; color: #69778b; font-size: 11px; line-height: 1.6; }
+.portfolio-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 12px 0 0; }
+.portfolio-metric { min-width: 0; padding: 20px 16px; border: 1px solid #e3e9f2; border-radius: 14px; background: white; box-shadow: 0 3px 12px #223c6008; }
+.portfolio-metric-total { border-color: #cadcff; }
+.portfolio-metric dt { color: #69778b; font-size: 12px; line-height: 1.5; }
+.portfolio-metric dd { margin: 12px 0 8px; font-size: clamp(20px, 3vw, 28px); font-weight: 700; letter-spacing: -.6px; overflow-wrap: anywhere; }
+.portfolio-metric-total dd { color: #2459ce; }
+.portfolio-metric p { color: #69778b; font-size: 11px; line-height: 1.6; }
+.portfolio-metric p span { color: #69778b; }
+.portfolio-position-count { color: #69778b; font-size: 11px; }
+.portfolio-screen .is-profit { color: #15803d; }
+.portfolio-screen .is-loss { color: #b91c1c; }
+.portfolio-screen .is-neutral { color: #536176; }
+.portfolio-trade-button { display: inline-flex; align-items: center; gap: 14px; margin-top: 24px; padding: 12px 20px; border: 0; border-radius: 8px; background: #2563eb; color: white; font-weight: 600; font-size: 13px; }
+.portfolio-trade-button:hover { background: #1d4ed8; }
+.portfolio-table-scroll { overflow-x: auto; }
+.portfolio-table-scroll:focus-visible { outline: 3px solid #2563eb; outline-offset: -3px; }
+.portfolio-table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; white-space: nowrap; }
+.portfolio-table th, .portfolio-table td { padding: 18px 20px; border-bottom: 1px solid #edf0f5; }
+.portfolio-table thead th { background: #f8faff; color: #69778b; font-size: 11px; font-weight: 600; }
+.portfolio-table tr:last-child > * { border-bottom: 0; }
+.portfolio-table th:nth-child(n+3), .portfolio-table td:nth-child(n+3) { text-align: right; }
+.portfolio-table small { display: block; margin-top: 4px; }
+@media (min-width: 900px) {
+  .portfolio-metrics { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 18px; }
+  .portfolio-metric { padding: 24px; }
+}
