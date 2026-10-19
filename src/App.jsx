@@ -1,5 +1,7 @@
 ﻿import { useState } from 'react'
 import './App.css'
+import Portfolio from './components/Portfolio'
+import Trade from './components/Trade'
 
 const screens = [
   {
@@ -77,6 +79,11 @@ function App() {
           <h1>{screen.title}</h1>
           <p className="page-description">{screen.description}</p>
         </div>
+        {activeScreen === 'portfolio' ? (
+          <Portfolio onStartTrading={() => setActiveScreen('trade')} />
+        ) : activeScreen === 'trade' ? (
+          <Trade />
+        ) : (
         <section className="workspace-card" aria-labelledby="workspace-title" key={screen.id}>
           <div className="card-heading">
             <h2 id="workspace-title">{screen.label}</h2>
@@ -89,6 +96,7 @@ function App() {
             <span className="empty-state-note">A little space for your next step.</span>
           </div>
         </section>
+        )}
         <footer className="workspace-footer">
           <span className="footer-dot" />
           <p>Practice with confidence. This is a simulation environment.</p>
