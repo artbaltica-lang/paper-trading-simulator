@@ -3,6 +3,7 @@ import './App.css'
 import History from './components/History'
 import Portfolio from './components/Portfolio'
 import Trade from './components/Trade'
+import History from './components/History'
 import { loadAccount, readAccount, toHistoryView, toPortfolioView, toValueSeries } from './db/account.js'
 
 const screens = [
@@ -101,6 +102,7 @@ function App() {
         ) : activeScreen === 'trade' ? (
           <Trade />
         ) : (
+          <History />
           <History data={toHistoryView(account)} valueSeries={toValueSeries(account)} />
         )}
         <footer className="workspace-footer">
