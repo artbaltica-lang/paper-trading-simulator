@@ -43,3 +43,11 @@ node scripts/check-integration.mjs
 ```
 
 `PriceChart` skirtas Trade ekranui, `ValueChart` — Portfolio ir History / Stats. Ekranų failo `src/App.jsx` šis karkasas nekeičia: 1 žmogus prijungia komponentus importu, kai turės formą ir duomenis.
+
+## Sandorio kelias
+
+Virtualaus pirkimo ir pardavimo taisyklės yra `src/trading/applyTrade.js`. Jos keičia balansą, poziciją ir sandorių istoriją. Patikra aprašyta [docs/trade-tests.md](docs/trade-tests.md).
+
+```bash
+node --test scripts/trade-path.test.mjs
+```
