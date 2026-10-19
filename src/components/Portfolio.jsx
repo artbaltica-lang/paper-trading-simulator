@@ -7,7 +7,11 @@ const signedCurrency = (value) => `${value > 0 ? '+' : ''}${currency.format(valu
 const percent = (value) => `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
 const performanceClass = (value) => value > 0 ? 'is-profit' : value < 0 ? 'is-loss' : 'is-neutral'
 
-export default function Portfolio({ onStartTrading, portfolio = demoPortfolio }) {
+export default function Portfolio({
+  onStartTrading,
+  portfolio = demoPortfolio,
+  note = 'Demo portfolio · Virtual funds · USD',
+}) {
   const { initialBalance, cashBalance, holdings } = portfolio
   const totalValue = cashBalance + holdings.reduce((total, holding) => total + holding.quantity * holding.currentPrice, 0)
   const profitLoss = totalValue - initialBalance
@@ -15,7 +19,7 @@ export default function Portfolio({ onStartTrading, portfolio = demoPortfolio })
 
   return (
     <div className="portfolio-screen">
-      <p className="portfolio-demo-note">Demo portfolio · Virtual funds · USD</p>
+      <p className="portfolio-demo-note">{note}</p>
       <dl className="portfolio-metrics" aria-label="Portfolio overview">
         <div className="portfolio-metric">
           <dt>Cash Balance</dt>
