@@ -1,7 +1,9 @@
-﻿import { useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import './App.css'
+import History from './components/History'
 import Portfolio from './components/Portfolio'
 import Trade from './components/Trade'
+import { loadAccount, readAccount, toHistoryView, toPortfolioView, toValueSeries } from './db/account.js'
 
 const screens = [
   {
@@ -42,7 +44,18 @@ function Icon({ name, ...props }) {
 
 function App() {
   const [activeScreen, setActiveScreen] = useState('portfolio')
+  const [account, setAccount] = useState(() => readAccount(window.localStorage))
   const screen = screens.find((item) => item.id === activeScreen)
+
+  useEffect(() => {
+    let active = true
+    loadAccount({ storage: window.localStorage }).then((next) => {
+      if (active) setAccount(next)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   return (
     <div className="app-shell">
@@ -80,22 +93,15 @@ function App() {
           <p className="page-description">{screen.description}</p>
         </div>
         {activeScreen === 'portfolio' ? (
-          <Portfolio onStartTrading={() => setActiveScreen('trade')} />
+          <Portfolio
+            onStartTrading={() => setActiveScreen('trade')}
+            portfolio={toPortfolioView(account)}
+            note="Saved account · Virtual funds · USD"
+          />
         ) : activeScreen === 'trade' ? (
           <Trade />
         ) : (
-        <section className="workspace-card" aria-labelledby="workspace-title" key={screen.id}>
-          <div className="card-heading">
-            <h2 id="workspace-title">{screen.label}</h2>
-            <span className="coming-soon">Coming soon</span>
-          </div>
-          <div className="empty-state">
-            <span className="empty-icon"><Icon name={screen.id} width="30" height="30" /></span>
-            <h3>{screen.emptyTitle}</h3>
-            <p>{screen.emptyDescription}</p>
-            <span className="empty-state-note">A little space for your next step.</span>
-          </div>
-        </section>
+          <History data={toHistoryView(account)} valueSeries={toValueSeries(account)} />
         )}
         <footer className="workspace-footer">
           <span className="footer-dot" />

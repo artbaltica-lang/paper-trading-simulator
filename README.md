@@ -2,6 +2,8 @@
 
 Mokomoji svetainė, kurioje galima praktikuotis prekiauti be tikrų pinigų. Šaka `feature/frontend` turi pradinį ekraną: antraštę, navigaciją ir tris tuščias darbo vietas.
 
+Svetainė: https://paper-trading-simulator-six.vercel.app/
+
 Duomenų bazės, kainų ir sandorių šioje šakoje dar nėra. Ženklelis SIMULATION rodo, kad tai tik praktika.
 
 ## Kas jau yra
