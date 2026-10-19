@@ -10,11 +10,22 @@
 -- It stays nullable with no default; pre-existing transaction rows have no snapshot.
 ALTER TABLE public.transactions
   ADD COLUMN IF NOT EXISTS idempotency_key uuid,
-  ADD COLUMN IF NOT EXISTS cash_balance_after numeric;
+  ADD COLUMN IF NOT EXISTS cash_balance_after numeric,
+  ADD COLUMN IF NOT EXISTS snapshot_id uuid,
+  ADD COLUMN IF NOT EXISTS snapshot_portfolio_value_after numeric,
+  ADD COLUMN IF NOT EXISTS snapshot_total_value_after numeric,
+  ADD COLUMN IF NOT EXISTS snapshot_created_at timestamptz,
+  ADD COLUMN IF NOT EXISTS market_prices_after jsonb;
 
 CREATE UNIQUE INDEX IF NOT EXISTS transactions_user_id_idempotency_key_uidx
   ON public.transactions (user_id, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
+
+-- The RPC accepts server-fetched prices with their provider trading day. These
+-- are the latest available Alpha Vantage trading-day prices; no arbitrary
+-- hourly freshness cutoff is imposed (weekends and market holidays are valid).
+-- Drop the prior signature so it cannot remain as an alternate execution path.
+DROP FUNCTION IF EXISTS public.execute_trade(uuid, text, text, integer, numeric, uuid);
 
 CREATE OR REPLACE FUNCTION public.execute_trade(
   p_user_id uuid,
@@ -22,7 +33,8 @@ CREATE OR REPLACE FUNCTION public.execute_trade(
   p_type text,
   p_quantity integer,
   p_price numeric,
-  p_idempotency_key uuid
+  p_idempotency_key uuid,
+  p_market_prices jsonb
 )
 RETURNS jsonb
 LANGUAGE plpgsql
@@ -37,6 +49,15 @@ DECLARE
   v_new_quantity integer;
   v_avg_price numeric;
   v_new_avg_price numeric;
+  v_market_price numeric;
+  v_market_value numeric;
+  v_portfolio_value numeric := 0;
+  v_total_value numeric;
+  v_price_text text;
+  v_trading_day text;
+  v_snapshot_id uuid;
+  v_snapshot_created_at timestamptz;
+  v_position record;
   v_transaction public.transactions%ROWTYPE;
 BEGIN
   IF p_user_id IS NULL
@@ -106,6 +127,17 @@ BEGIN
         MESSAGE = 'IDEMPOTENCY_RESULT_UNAVAILABLE';
     END IF;
 
+    IF v_transaction.snapshot_id IS NULL
+      OR v_transaction.snapshot_portfolio_value_after IS NULL
+      OR v_transaction.snapshot_total_value_after IS NULL
+      OR v_transaction.snapshot_created_at IS NULL
+      OR v_transaction.market_prices_after IS NULL
+    THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '55000',
+        MESSAGE = 'IDEMPOTENCY_RESULT_UNAVAILABLE';
+    END IF;
+
     RETURN pg_catalog.jsonb_build_object(
       'transaction', pg_catalog.jsonb_build_object(
         'id', v_transaction.id,
@@ -117,8 +149,22 @@ BEGIN
         'created_at', v_transaction.created_at
       ),
       'cashBalance', v_transaction.cash_balance_after,
+      'snapshot', pg_catalog.jsonb_build_object(
+        'id', v_transaction.snapshot_id,
+        'cashBalance', v_transaction.cash_balance_after,
+        'portfolioValue', v_transaction.snapshot_portfolio_value_after,
+        'totalValue', v_transaction.snapshot_total_value_after,
+        'createdAt', v_transaction.snapshot_created_at,
+        'marketPrices', v_transaction.market_prices_after
+      ),
       'replayed', true
     );
+  END IF;
+
+  IF p_market_prices IS NULL OR pg_catalog.jsonb_typeof(p_market_prices) <> 'object' THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '22023',
+      MESSAGE = 'INVALID_MARKET_PRICES';
   END IF;
 
   v_total := pg_catalog.round(p_price, 2) * p_quantity;
@@ -218,6 +264,84 @@ BEGIN
     END IF;
   END IF;
 
+  -- Validate and value the positions after the trade. The profile lock
+  -- serializes this account's RPC trades; a missing concurrent symbol raises
+  -- an exception, rolling back the balance, position, transaction and snapshot.
+  FOR v_position IN
+    SELECT position.symbol, position.quantity
+      FROM public.positions AS position
+     WHERE position.user_id = p_user_id
+       AND position.quantity > 0
+     ORDER BY position.symbol
+  LOOP
+    IF NOT (p_market_prices ? v_position.symbol) THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '22023',
+        MESSAGE = 'MISSING_MARKET_PRICE';
+    END IF;
+
+    IF pg_catalog.jsonb_typeof(p_market_prices -> v_position.symbol) <> 'object' THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '22023',
+        MESSAGE = 'INVALID_MARKET_PRICE';
+    END IF;
+
+    v_price_text := p_market_prices -> v_position.symbol ->> 'price';
+    v_trading_day := p_market_prices -> v_position.symbol ->> 'latestTradingDay';
+    IF pg_catalog.jsonb_typeof(p_market_prices -> v_position.symbol -> 'price') <> 'number'
+      OR pg_catalog.jsonb_typeof(p_market_prices -> v_position.symbol -> 'latestTradingDay') <> 'string'
+      OR v_price_text IS NULL OR v_price_text !~ '^[0-9]+([.][0-9]+)?$'
+      OR v_trading_day IS NULL OR v_trading_day !~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'
+    THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '22023',
+        MESSAGE = 'INVALID_MARKET_PRICE';
+    END IF;
+
+    BEGIN
+      v_market_price := v_price_text::numeric;
+      IF pg_catalog.to_char(v_trading_day::date, 'YYYY-MM-DD') <> v_trading_day THEN
+        RAISE EXCEPTION USING
+          ERRCODE = '22023',
+          MESSAGE = 'INVALID_MARKET_PRICE';
+      END IF;
+    EXCEPTION WHEN others THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '22023',
+        MESSAGE = 'INVALID_MARKET_PRICE';
+    END;
+
+    IF v_market_price <= 0 THEN
+      RAISE EXCEPTION USING
+        ERRCODE = '22023',
+        MESSAGE = 'INVALID_MARKET_PRICE';
+    END IF;
+
+    v_market_value := pg_catalog.round(v_position.quantity::numeric * v_market_price, 2);
+    v_portfolio_value := v_portfolio_value + v_market_value;
+  END LOOP;
+
+  v_portfolio_value := pg_catalog.round(v_portfolio_value, 2);
+  v_total_value := pg_catalog.round(v_cash_balance_after + v_portfolio_value, 2);
+  v_snapshot_id := pg_catalog.gen_random_uuid();
+  v_snapshot_created_at := pg_catalog.now();
+
+  INSERT INTO public.snapshots (
+    id,
+    user_id,
+    cash_balance,
+    portfolio_value,
+    total_value,
+    created_at
+  ) VALUES (
+    v_snapshot_id,
+    p_user_id,
+    v_cash_balance_after,
+    v_portfolio_value,
+    v_total_value,
+    v_snapshot_created_at
+  );
+
   INSERT INTO public.transactions (
     id,
     user_id,
@@ -228,7 +352,12 @@ BEGIN
     total,
     created_at,
     idempotency_key,
-    cash_balance_after
+    cash_balance_after,
+    snapshot_id,
+    snapshot_portfolio_value_after,
+    snapshot_total_value_after,
+    snapshot_created_at,
+    market_prices_after
   ) VALUES (
     pg_catalog.gen_random_uuid(),
     p_user_id,
@@ -239,7 +368,12 @@ BEGIN
     v_total,
     pg_catalog.now(),
     p_idempotency_key,
-    v_cash_balance_after
+    v_cash_balance_after,
+    v_snapshot_id,
+    v_portfolio_value,
+    v_total_value,
+    v_snapshot_created_at,
+    p_market_prices
   )
   RETURNING * INTO v_transaction;
 
@@ -254,12 +388,20 @@ BEGIN
       'created_at', v_transaction.created_at
     ),
     'cashBalance', v_cash_balance_after,
+    'snapshot', pg_catalog.jsonb_build_object(
+      'id', v_snapshot_id,
+      'cashBalance', v_cash_balance_after,
+      'portfolioValue', v_portfolio_value,
+      'totalValue', v_total_value,
+      'createdAt', v_snapshot_created_at,
+      'marketPrices', p_market_prices
+    ),
     'replayed', false
   );
 END;
 $function$;
 
-REVOKE ALL ON FUNCTION public.execute_trade(uuid, text, text, integer, numeric, uuid)
+REVOKE ALL ON FUNCTION public.execute_trade(uuid, text, text, integer, numeric, uuid, jsonb)
   FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.execute_trade(uuid, text, text, integer, numeric, uuid)
+GRANT EXECUTE ON FUNCTION public.execute_trade(uuid, text, text, integer, numeric, uuid, jsonb)
   TO service_role;
