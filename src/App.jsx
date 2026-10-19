@@ -1,8 +1,10 @@
-﻿import { useState } from 'react'
+﻿import { useEffect, useState } from 'react'
 import './App.css'
+import History from './components/History'
 import Portfolio from './components/Portfolio'
 import Trade from './components/Trade'
 import History from './components/History'
+import { loadAccount, readAccount, toHistoryView, toPortfolioView, toValueSeries } from './db/account.js'
 
 const screens = [
   {
@@ -43,7 +45,18 @@ function Icon({ name, ...props }) {
 
 function App() {
   const [activeScreen, setActiveScreen] = useState('portfolio')
+  const [account, setAccount] = useState(() => readAccount(window.localStorage))
   const screen = screens.find((item) => item.id === activeScreen)
+
+  useEffect(() => {
+    let active = true
+    loadAccount({ storage: window.localStorage }).then((next) => {
+      if (active) setAccount(next)
+    })
+    return () => {
+      active = false
+    }
+  }, [])
 
   return (
     <div className="app-shell">
@@ -81,11 +94,16 @@ function App() {
           <p className="page-description">{screen.description}</p>
         </div>
         {activeScreen === 'portfolio' ? (
-          <Portfolio onStartTrading={() => setActiveScreen('trade')} />
+          <Portfolio
+            onStartTrading={() => setActiveScreen('trade')}
+            portfolio={toPortfolioView(account)}
+            note="Saved account · Virtual funds · USD"
+          />
         ) : activeScreen === 'trade' ? (
           <Trade />
         ) : (
           <History />
+          <History data={toHistoryView(account)} valueSeries={toValueSeries(account)} />
         )}
         <footer className="workspace-footer">
           <span className="footer-dot" />
