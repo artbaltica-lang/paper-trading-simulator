@@ -2,6 +2,7 @@
 import './App.css'
 import Portfolio from './components/Portfolio'
 import Trade from './components/Trade'
+import History from './components/History'
 
 const screens = [
   {
@@ -84,18 +85,7 @@ function App() {
         ) : activeScreen === 'trade' ? (
           <Trade />
         ) : (
-        <section className="workspace-card" aria-labelledby="workspace-title" key={screen.id}>
-          <div className="card-heading">
-            <h2 id="workspace-title">{screen.label}</h2>
-            <span className="coming-soon">Coming soon</span>
-          </div>
-          <div className="empty-state">
-            <span className="empty-icon"><Icon name={screen.id} width="30" height="30" /></span>
-            <h3>{screen.emptyTitle}</h3>
-            <p>{screen.emptyDescription}</p>
-            <span className="empty-state-note">A little space for your next step.</span>
-          </div>
-        </section>
+          <History />
         )}
         <footer className="workspace-footer">
           <span className="footer-dot" />
