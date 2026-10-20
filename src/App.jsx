@@ -3,7 +3,9 @@ import './App.css'
 import History from './components/History'
 import Portfolio from './components/Portfolio'
 import Trade from './components/Trade'
-import { loadAccount, readAccount, toHistoryView, toPortfolioView, toValueSeries } from './db/account.js'
+import Auth from './components/Auth'
+import { supabase } from './lib/supabaseClient'
+import { loadHistory, loadPortfolio } from './db/account.js'
 
 const screens = [
   {
@@ -43,19 +45,134 @@ function Icon({ name, ...props }) {
 }
 
 function App() {
-  const [activeScreen, setActiveScreen] = useState('portfolio')
-  const [account, setAccount] = useState(() => readAccount(window.localStorage))
-  const screen = screens.find((item) => item.id === activeScreen)
+  const [session, setSession] = useState(null)
+  const [checkingSession, setCheckingSession] = useState(true)
+  const [authError, setAuthError] = useState('')
+  const [loggingOut, setLoggingOut] = useState(false)
 
   useEffect(() => {
     let active = true
-    loadAccount({ storage: window.localStorage }).then((next) => {
-      if (active) setAccount(next)
+    let sessionChanged = false
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!active) return
+      sessionChanged = true
+      setSession(nextSession)
+      setAuthError('')
+      setCheckingSession(false)
     })
+
+    async function checkSession() {
+      try {
+        const { data, error } = await supabase.auth.getSession()
+        if (!active || sessionChanged) return
+        if (error) setAuthError('Unable to restore your session. Please sign in again.')
+        else setSession(data.session)
+      } catch {
+        if (active && !sessionChanged) setAuthError('Unable to check your session. Please sign in again.')
+      } finally {
+        if (active) setCheckingSession(false)
+      }
+    }
+    checkSession()
     return () => {
       active = false
+      subscription.unsubscribe()
     }
   }, [])
+
+  async function handleLogout() {
+    if (loggingOut) return
+    setLoggingOut(true)
+    setAuthError('')
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) setAuthError('Unable to log out. Please try again.')
+      else setSession(null)
+    } catch {
+      setAuthError('Unable to log out. Check your connection and try again.')
+    } finally {
+      setLoggingOut(false)
+    }
+  }
+
+  if (checkingSession) {
+    return <main className="session-screen" aria-busy="true"><p role="status">Checking your session…</p></main>
+  }
+  if (!session) {
+    return (
+      <main className="session-screen">
+        {authError && <p className="session-error" role="alert">{authError}</p>}
+        <Auth onAuthenticated={(nextSession) => {
+          setSession(nextSession)
+          setAuthError('')
+        }} />
+      </main>
+    )
+  }
+  return <Workspace key={session.user.id} session={session} onLogout={handleLogout} loggingOut={loggingOut} authError={authError} />
+}
+
+function PortfolioRequest({ accessToken, onStartTrading }) {
+  const [result, setResult] = useState({ loading: true, data: null, error: '' })
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    loadPortfolio({ accessToken, signal: controller.signal }).then((data) => {
+      if (!controller.signal.aborted) setResult({ loading: false, data, error: '' })
+    }).catch((error) => {
+      if (!controller.signal.aborted) setResult({ loading: false, data: null, error: error.message || 'Unable to load your portfolio. Please try again.' })
+    })
+    return () => controller.abort()
+  }, [accessToken, attempt])
+
+  if (result.loading) return <p role="status" aria-busy="true">Loading portfolio…</p>
+  if (result.error) {
+    return (
+      <section>
+        <p className="session-error" role="alert">{result.error}</p>
+        <button className="logout-button" type="button" onClick={() => {
+          setResult({ loading: true, data: null, error: '' })
+          setAttempt((value) => value + 1)
+        }}>Try again</button>
+      </section>
+    )
+  }
+  return <Portfolio onStartTrading={onStartTrading} portfolio={result.data} note="Your account · Backend data · Virtual funds · USD" />
+}
+
+function HistoryRequest({ accessToken }) {
+  const [result, setResult] = useState({ loading: true, data: null, error: '' })
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    loadHistory({ accessToken, signal: controller.signal }).then((data) => {
+      if (!controller.signal.aborted) setResult({ loading: false, data, error: '' })
+    }).catch((error) => {
+      if (!controller.signal.aborted) setResult({ loading: false, data: null, error: error.message || 'Unable to load your history. Please try again.' })
+    })
+    return () => controller.abort()
+  }, [accessToken, attempt])
+
+  if (result.loading) return <p role="status" aria-busy="true">Loading history…</p>
+  if (result.error) {
+    return (
+      <section>
+        <p className="session-error" role="alert">{result.error}</p>
+        <button className="logout-button" type="button" onClick={() => {
+          setResult({ loading: true, data: null, error: '' })
+          setAttempt((value) => value + 1)
+        }}>Try again</button>
+      </section>
+    )
+  }
+  return <History data={result.data.history} valueSeries={result.data.valueSeries} />
+}
+
+function Workspace({ session, onLogout, loggingOut, authError }) {
+  const [activeScreen, setActiveScreen] = useState('portfolio')
+  const screen = screens.find((item) => item.id === activeScreen)
 
   return (
     <div className="app-shell">
@@ -66,7 +183,12 @@ function App() {
             <span className="brand-icon"><Icon name="brand" /></span>
             <span className="brand-name">Paper Trading Simulator</span>
           </div>
-          <span className="simulation-badge"><span />SIMULATION</span>
+          <div className="header-actions">
+            <span className="simulation-badge"><span />SIMULATION</span>
+            <button className="logout-button" type="button" disabled={loggingOut} onClick={onLogout}>
+              {loggingOut ? 'Logging out…' : 'Logout'}
+            </button>
+          </div>
         </div>
         <nav className="navigation" aria-label="Main navigation">
           <div className="navigation-inner">
@@ -87,21 +209,22 @@ function App() {
       </header>
 
       <main id="main-content" className="main-content">
+        {authError && <p className="session-error" role="alert">{authError}</p>}
         <div className="page-heading" aria-live="polite" aria-atomic="true">
           <p className="eyebrow">YOUR PRACTICE WORKSPACE</p>
           <h1>{screen.title}</h1>
           <p className="page-description">{screen.description}</p>
         </div>
         {activeScreen === 'portfolio' ? (
-          <Portfolio
+          <PortfolioRequest
+            key={session.access_token}
+            accessToken={session.access_token}
             onStartTrading={() => setActiveScreen('trade')}
-            portfolio={toPortfolioView(account)}
-            note="Saved account · Virtual funds · USD"
           />
         ) : activeScreen === 'trade' ? (
           <Trade />
         ) : (
-          <History data={toHistoryView(account)} valueSeries={toValueSeries(account)} />
+          <HistoryRequest key={session.access_token} accessToken={session.access_token} />
         )}
         <footer className="workspace-footer">
           <span className="footer-dot" />
