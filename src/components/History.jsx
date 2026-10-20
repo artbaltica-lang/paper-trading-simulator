@@ -58,6 +58,7 @@ export default function History({ data = demoHistory, accessToken }) {
         ) : (
           <>
             <p className="history-table-note" id="history-table-note">Times in UTC. Totals are quantity × unit price, before fees.</p>
+            <p className="history-scroll-hint">Swipe or scroll horizontally to see all columns.</p>
             <div className="history-table-scroll" role="region" aria-label="Transaction history table" tabIndex={0}>
               <table className="history-table" aria-describedby="history-table-note">
                 <thead>
@@ -84,10 +85,13 @@ export default function History({ data = demoHistory, accessToken }) {
         )}
       </section>
 
-      <div className="history-charts">
-        <p className="history-data-note">Total portfolio value change since the starting balance, including unrealized gains and losses.</p>
+      <section className="history-charts" aria-labelledby="history-performance-title" aria-describedby="history-performance-description">
+        <header className="history-performance-heading">
+          <h2 id="history-performance-title">Portfolio performance</h2>
+          <p id="history-performance-description">Total portfolio value change since the starting balance, including unrealized gains and losses.</p>
+        </header>
         <LiveProfitLossChart key={accessToken} token={accessToken} />
-      </div>
+      </section>
     </div>
   )
 }
