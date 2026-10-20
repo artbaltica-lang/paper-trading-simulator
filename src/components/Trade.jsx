@@ -257,20 +257,42 @@ export default function Trade({ userId, accessToken, onTradeSuccess }) {
             <p className="trade-price-note">This estimate is indicative. The backend determines the final execution price.</p>
             {exceedsBalance && <p className="trade-error" role="status">Estimated cost exceeds your available cash balance.</p>}
             {exceedsShares && currentAccount.data && <p className="trade-error" role="status">You do not own enough shares for this sale.</p>}
-            <button className="trade-confirm" type="submit" disabled={!canSubmit} aria-describedby="trade-backend-note">{type === 'BUY' ? 'Buy Stock' : 'Sell Stock'}</button>
-            <p id="trade-backend-note" className="trade-backend-note">The backend validates your balance, shares and final execution price.</p>
-            {order?.status === 'sending' && <p role="status" aria-busy="true">Submitting order…</p>}
-            {order?.error && <p className="trade-error" role="alert">{order.error}</p>}
-            {storageError && <p className="trade-error" role="alert">{storageError}</p>}
-            {order?.status === 'retry' && <div>
+            {order?.status !== 'success' && <>
+              <button className="trade-confirm" type="submit" disabled={!canSubmit} aria-describedby="trade-backend-note">{type === 'BUY' ? 'Buy Stock' : 'Sell Stock'}</button>
+              <p id="trade-backend-note" className="trade-backend-note">The backend validates your balance, shares and final execution price.</p>
+            </>}
+            {order?.status === 'sending' && <p className="trade-status" role="status" aria-busy="true">Submitting order… Please wait for confirmation.</p>}
+            {order?.error && <p className="trade-feedback trade-feedback-error" role="alert">{order.error}</p>}
+            {storageError && <p className="trade-feedback trade-feedback-warning" role="alert">{storageError}</p>}
+            {order?.status === 'retry' && <div className="trade-feedback trade-feedback-warning">
+              <h3>Order awaiting confirmation</h3>
               <p>The order result is unconfirmed. Retry sends the same order; do not place it again as a new order.</p>
-              <button type="button" disabled={Boolean(storageError)} onClick={() => sendOrder(order)}>Retry same order</button>
+              <button className="trade-secondary" type="button" disabled={Boolean(storageError)} onClick={() => sendOrder(order)}>Retry same order</button>
             </div>}
-            {order?.status === 'success' && <div role="status">
-              <p>Order confirmed{order.replayed ? ' (previously executed)' : ''}: {order.transaction.type} {order.transaction.quantity} {order.transaction.symbol} at {currency.format(order.transaction.price)}. Total: {currency.format(order.transaction.total)}.</p>
-              {currentAccount.loading && <p>Order succeeded. Refreshing portfolio…</p>}
-              {currentAccount.error && <p>Order succeeded, but portfolio refresh failed. Use Retry account below; the order will not be resubmitted.</p>}
-              <button type="button" disabled={!currentAccount.data || Boolean(storageError)} onClick={() => {
+            {order?.status === 'success' && <div className="trade-result">
+              <section className="trade-success" role="status" aria-label="Executed order">
+                <div className="trade-success-heading">
+                  <span className="trade-success-icon" aria-hidden="true">✓</span>
+                  <div><h3>Order confirmed</h3><p>{order.replayed ? 'Previously executed order recovered.' : 'Your trade was executed successfully.'}</p></div>
+                </div>
+                <div className="trade-executed-stock"><span className={`trade-result-side trade-result-${order.transaction.type.toLowerCase()}`}>{order.transaction.type}</span><strong>{order.transaction.symbol}</strong></div>
+                <dl className="trade-execution-details">
+                  <div><dt>Shares</dt><dd>{order.transaction.quantity}</dd></div>
+                  <div><dt>Execution price</dt><dd>{currency.format(order.transaction.price)}</dd></div>
+                  <div className="trade-execution-total"><dt>Total amount</dt><dd>{currency.format(order.transaction.total)}</dd></div>
+                </dl>
+              </section>
+              {currentAccount.loading && <p className="trade-status" role="status" aria-busy="true">Trade complete · Updating your portfolio…</p>}
+              {currentAccount.error && <section className="trade-feedback trade-feedback-warning" role="alert">
+                <h3>Trade complete · Portfolio update failed</h3>
+                <p>Your order succeeded. Refresh your account to see the latest balance. This will not place another order.</p>
+                <p className="trade-refresh-error">{currentAccount.error}</p>
+                <button className="trade-secondary" type="button" onClick={() => {
+                  setAccount(loadingResult)
+                  setAccountAttempt((value) => value + 1)
+                }}>Retry account refresh</button>
+              </section>}
+              <button className="trade-secondary trade-new-order" type="button" disabled={!currentAccount.data || Boolean(storageError)} onClick={() => {
                 if (verifyStorage()) setOrder(null)
               }}>New order</button>
             </div>}
@@ -280,9 +302,9 @@ export default function Trade({ userId, accessToken, onTradeSuccess }) {
         <aside className="trade-account" aria-labelledby="trade-balance-title">
           <h2 id="trade-balance-title">Available virtual cash</h2>
           {currentAccount.loading && <p role="status" aria-busy="true">Loading account…</p>}
-          {currentAccount.error && <div>
+          {currentAccount.error && order?.status !== 'success' && <div>
             <p className="trade-error" role="alert">{currentAccount.error}</p>
-            <button type="button" onClick={() => {
+            <button className="trade-secondary" type="button" onClick={() => {
               setAccount(loadingResult)
               setAccountAttempt((value) => value + 1)
             }}>Retry account</button>
