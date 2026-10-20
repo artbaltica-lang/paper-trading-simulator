@@ -1,3 +1,5 @@
+import { checkPortfolioSeries } from '../contracts/formats.js'
+
 export const ACCOUNT_KEY = 'paper-trading-account-v1'
 
 function roundMoney(value) {
@@ -133,4 +135,98 @@ export async function loadAccount({ fetchImpl, storage } = {}) {
     }
   }
   return readAccount(store)
+}
+
+// Portfolio uses authenticated API data only; local accounts remain available
+// for the screens that have not yet been integrated.
+export async function loadPortfolio({ accessToken, signal, fetchImpl = globalThis.fetch } = {}) {
+  if (!accessToken) throw new Error('Your session is unavailable. Please log out and sign in again.')
+  const response = await fetchImpl('/api/portfolio', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    signal,
+    cache: 'no-store',
+  })
+  if (response.status === 401) {
+    throw new Error('Your session has expired or is unauthorized. Please log out and sign in again.')
+  }
+  if (!response.ok) {
+    throw new Error(`Unable to load your portfolio (HTTP ${response.status}). Please try again.`)
+  }
+  const data = await response.json()
+  const validPosition = (position) => position && typeof position.symbol === 'string'
+    && typeof position.companyName === 'string'
+    && ['quantity', 'avgPrice', 'currentPrice', 'marketValue', 'profitLoss'].every((key) => Number.isFinite(position[key]))
+  if (!['cashBalance', 'totalValue', 'profitLoss'].every((key) => Number.isFinite(data?.[key]))
+    || !Array.isArray(data.positions) || !data.positions.every(validPosition)) {
+    throw new Error('The server returned invalid portfolio data. Please try again.')
+  }
+  return {
+    cashBalance: data.cashBalance,
+    totalValue: data.totalValue,
+    profitLoss: data.profitLoss,
+    initialBalance: roundMoney(data.totalValue - data.profitLoss),
+    holdings: data.positions.map((position) => ({
+      symbol: position.symbol,
+      name: position.companyName,
+      quantity: position.quantity,
+      currentPrice: position.currentPrice,
+      averageCost: position.avgPrice,
+      marketValue: position.marketValue,
+      profitLoss: position.profitLoss,
+    })),
+  }
+}
+
+export async function loadHistory({ accessToken, signal, fetchImpl = globalThis.fetch } = {}) {
+  if (!accessToken) throw new Error('Your session is unavailable. Please log out and sign in again.')
+
+  async function request(path) {
+    const response = await fetchImpl(path, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal,
+      cache: 'no-store',
+    })
+    if (response.status === 401) {
+      throw new Error('Your session has expired or is unauthorized. Please log out and sign in again.')
+    }
+    if (!response.ok) {
+      throw new Error(`Unable to load ${path} (HTTP ${response.status}). Please try again.`)
+    }
+    return response.json()
+  }
+
+  const [valueSeries, data] = await Promise.all([
+    request('/api/history'),
+    request('/api/transactions'),
+  ])
+  const validTransaction = (row) => row
+    && (typeof row.id === 'string' || Number.isFinite(row.id))
+    && typeof row.symbol === 'string'
+    && ['BUY', 'SELL'].includes(row.type)
+    && Number.isFinite(row.quantity) && row.quantity > 0
+    && Number.isFinite(row.price) && row.price > 0
+    && typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt))
+
+  if (!checkPortfolioSeries(valueSeries).ok
+    || !Array.isArray(data?.transactions) || !data.transactions.every(validTransaction)) {
+    throw new Error('The server returned invalid history data. Please try again.')
+  }
+
+  return {
+    valueSeries,
+    history: {
+      isDemo: false,
+      currency: valueSeries.currency,
+      realizedProfitLoss: null,
+      transactions: data.transactions.map((row) => ({
+        id: row.id,
+        time: row.createdAt,
+        symbol: row.symbol,
+        type: row.type,
+        quantity: row.quantity,
+        price: row.price,
+      })),
+    },
+  }
 }

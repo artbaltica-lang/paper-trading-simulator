@@ -13,8 +13,8 @@ export default function Portfolio({
   note = 'Demo portfolio · Virtual funds · USD',
 }) {
   const { initialBalance, cashBalance, holdings } = portfolio
-  const totalValue = cashBalance + holdings.reduce((total, holding) => total + holding.quantity * holding.currentPrice, 0)
-  const profitLoss = totalValue - initialBalance
+  const totalValue = portfolio.totalValue ?? cashBalance + holdings.reduce((total, holding) => total + holding.quantity * holding.currentPrice, 0)
+  const profitLoss = portfolio.profitLoss ?? totalValue - initialBalance
   const profitLossPercent = initialBalance > 0 ? profitLoss / initialBalance * 100 : 0
 
   return (
@@ -66,9 +66,9 @@ export default function Portfolio({
               <thead><tr><th scope="col">Symbol</th><th scope="col">Name</th><th scope="col">Quantity</th><th scope="col">Current Price</th><th scope="col">Position Value</th><th scope="col">P/L</th></tr></thead>
               <tbody>
                 {holdings.map((holding) => {
-                  const value = holding.quantity * holding.currentPrice
+                  const value = holding.marketValue ?? holding.quantity * holding.currentPrice
                   const cost = holding.quantity * holding.averageCost
-                  const change = value - cost
+                  const change = holding.profitLoss ?? value - cost
                   return (
                     <tr key={holding.symbol}>
                       <th scope="row">{holding.symbol}</th>

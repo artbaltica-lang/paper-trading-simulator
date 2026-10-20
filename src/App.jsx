@@ -5,7 +5,7 @@ import Portfolio from './components/Portfolio'
 import Trade from './components/Trade'
 import Auth from './components/Auth'
 import { supabase } from './lib/supabaseClient'
-import { loadAccount, readAccount, toHistoryView, toPortfolioView, toValueSeries } from './db/account.js'
+import { loadHistory, loadPortfolio } from './db/account.js'
 
 const screens = [
   {
@@ -109,23 +109,70 @@ function App() {
       </main>
     )
   }
-  return <Workspace key={session.user.id} onLogout={handleLogout} loggingOut={loggingOut} authError={authError} />
+  return <Workspace key={session.user.id} session={session} onLogout={handleLogout} loggingOut={loggingOut} authError={authError} />
 }
 
-function Workspace({ onLogout, loggingOut, authError }) {
-  const [activeScreen, setActiveScreen] = useState('portfolio')
-  const [account, setAccount] = useState(() => readAccount(window.localStorage))
-  const screen = screens.find((item) => item.id === activeScreen)
+function PortfolioRequest({ accessToken, onStartTrading }) {
+  const [result, setResult] = useState({ loading: true, data: null, error: '' })
+  const [attempt, setAttempt] = useState(0)
 
   useEffect(() => {
-    let active = true
-    loadAccount({ storage: window.localStorage }).then((next) => {
-      if (active) setAccount(next)
+    const controller = new AbortController()
+    loadPortfolio({ accessToken, signal: controller.signal }).then((data) => {
+      if (!controller.signal.aborted) setResult({ loading: false, data, error: '' })
+    }).catch((error) => {
+      if (!controller.signal.aborted) setResult({ loading: false, data: null, error: error.message || 'Unable to load your portfolio. Please try again.' })
     })
-    return () => {
-      active = false
-    }
-  }, [])
+    return () => controller.abort()
+  }, [accessToken, attempt])
+
+  if (result.loading) return <p role="status" aria-busy="true">Loading portfolio…</p>
+  if (result.error) {
+    return (
+      <section>
+        <p className="session-error" role="alert">{result.error}</p>
+        <button className="logout-button" type="button" onClick={() => {
+          setResult({ loading: true, data: null, error: '' })
+          setAttempt((value) => value + 1)
+        }}>Try again</button>
+      </section>
+    )
+  }
+  return <Portfolio onStartTrading={onStartTrading} portfolio={result.data} note="Your account · Backend data · Virtual funds · USD" />
+}
+
+function HistoryRequest({ accessToken }) {
+  const [result, setResult] = useState({ loading: true, data: null, error: '' })
+  const [attempt, setAttempt] = useState(0)
+
+  useEffect(() => {
+    const controller = new AbortController()
+    loadHistory({ accessToken, signal: controller.signal }).then((data) => {
+      if (!controller.signal.aborted) setResult({ loading: false, data, error: '' })
+    }).catch((error) => {
+      if (!controller.signal.aborted) setResult({ loading: false, data: null, error: error.message || 'Unable to load your history. Please try again.' })
+    })
+    return () => controller.abort()
+  }, [accessToken, attempt])
+
+  if (result.loading) return <p role="status" aria-busy="true">Loading history…</p>
+  if (result.error) {
+    return (
+      <section>
+        <p className="session-error" role="alert">{result.error}</p>
+        <button className="logout-button" type="button" onClick={() => {
+          setResult({ loading: true, data: null, error: '' })
+          setAttempt((value) => value + 1)
+        }}>Try again</button>
+      </section>
+    )
+  }
+  return <History data={result.data.history} valueSeries={result.data.valueSeries} />
+}
+
+function Workspace({ session, onLogout, loggingOut, authError }) {
+  const [activeScreen, setActiveScreen] = useState('portfolio')
+  const screen = screens.find((item) => item.id === activeScreen)
 
   return (
     <div className="app-shell">
@@ -169,15 +216,15 @@ function Workspace({ onLogout, loggingOut, authError }) {
           <p className="page-description">{screen.description}</p>
         </div>
         {activeScreen === 'portfolio' ? (
-          <Portfolio
+          <PortfolioRequest
+            key={session.access_token}
+            accessToken={session.access_token}
             onStartTrading={() => setActiveScreen('trade')}
-            portfolio={toPortfolioView(account)}
-            note="Saved account · Virtual funds · USD"
           />
         ) : activeScreen === 'trade' ? (
           <Trade />
         ) : (
-          <History data={toHistoryView(account)} valueSeries={toValueSeries(account)} />
+          <HistoryRequest key={session.access_token} accessToken={session.access_token} />
         )}
         <footer className="workspace-footer">
           <span className="footer-dot" />
