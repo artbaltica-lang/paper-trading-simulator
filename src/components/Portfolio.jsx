@@ -1,4 +1,5 @@
 import { demoPortfolio } from '../data/demoPortfolio'
+import { LiveValueChart } from './charts/index.js'
 import './Portfolio.css'
 
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
@@ -8,6 +9,7 @@ const percent = (value) => `${value > 0 ? '+' : ''}${value.toFixed(2)}%`
 const performanceClass = (value) => value > 0 ? 'is-profit' : value < 0 ? 'is-loss' : 'is-neutral'
 
 export default function Portfolio({
+  accessToken,
   onStartTrading,
   portfolio = demoPortfolio,
   note = 'Demo portfolio · Virtual funds · USD',
@@ -85,6 +87,7 @@ export default function Portfolio({
           </div>
         )}
       </section>
+      <LiveValueChart key={accessToken} token={accessToken} />
     </div>
   )
 }
