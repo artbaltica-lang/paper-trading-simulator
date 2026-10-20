@@ -1,2 +1,6 @@
 export { default as PriceChart } from './PriceChart.jsx'
 export { default as ValueChart } from './ValueChart.jsx'
+export { default as ProfitLossChart } from './ProfitLossChart.jsx'
+export { default as LivePriceChart } from './LivePriceChart.jsx'
+export { default as LiveValueChart } from './LiveValueChart.jsx'
+export { default as LiveProfitLossChart } from './LiveProfitLossChart.jsx'

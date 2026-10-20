@@ -22,7 +22,7 @@ const validResponse = (overrides = {}) => ({
   ...overrides,
 })
 
-function makeHarness({ authResult, quoteResult, priorTransaction = null, lookupError = null, rpcResult, positionsError = null } = {}) {
+function makeHarness({ authResult, quoteResult, priorTransaction = null, lookupError = null, rpcResult, positionsError = null, throwOnAuth = false, throwOnLookup = false } = {}) {
   const calls = { auth: 0, quote: [], rpc: [], lookup: 0 }
   const authentication = authResult ?? { supabase: null, user }
   const positionsQuery = {
@@ -35,6 +35,7 @@ function makeHarness({ authResult, quoteResult, priorTransaction = null, lookupE
     eq() { return this },
     maybeSingle() {
       calls.lookup += 1
+      if (throwOnLookup) throw new Error('sensitive database detail')
       return Promise.resolve({ data: priorTransaction, error: lookupError })
     },
   }
@@ -57,6 +58,7 @@ function makeHarness({ authResult, quoteResult, priorTransaction = null, lookupE
 
   mock.module(authUrl, { namedExports: { authenticateUser: async () => {
     calls.auth += 1
+    if (throwOnAuth) throw new Error('sensitive authentication detail')
     if (authResult?.error) return authResult
     return { supabase, user }
   } } })
@@ -97,6 +99,26 @@ test('successful BUY returns validated result and calls RPC with BUY parameters'
   assert.equal(res.body.cashBalance, 9900)
   assert.equal(harness.calls.rpc[0].args.p_type, 'BUY')
   assert.equal(harness.calls.rpc[0].args.p_user_id, user.id)
+})
+
+test('quantity 1 is accepted and passed to the RPC', async () => {
+  const harness = makeHarness()
+  const res = await invoke(harness, { body: { symbol: 'AAPL', type: 'BUY', quantity: 1 } })
+  assert.equal(res.statusCode, 200)
+  assert.equal(harness.calls.rpc[0].args.p_quantity, 1)
+})
+
+test('maximum integer quantity is accepted and passed to the RPC', async () => {
+  const quantity = 2_147_483_647
+  const total = quantity * 100
+  const harness = makeHarness({ rpcResult: { data: validResponse({
+    transaction: { ...validResponse().transaction, quantity, total },
+    cashBalance: 0,
+    snapshot: { ...validResponse().snapshot, cashBalance: 0, portfolioValue: total, totalValue: total },
+  }), error: null } })
+  const res = await invoke(harness, { body: { symbol: 'AAPL', type: 'BUY', quantity } })
+  assert.equal(res.statusCode, 200)
+  assert.equal(harness.calls.rpc[0].args.p_quantity, quantity)
 })
 
 test('successful SELL returns validated result and calls RPC with SELL parameters', async () => {
@@ -213,3 +235,41 @@ test('RPC dependency error maps to generic HTTP 500', async () => {
   assert.equal(res.statusCode, 500)
   assert.equal(res.body.error.code, 'TRADE_FAILED')
 })
+
+test('negative quantity returns INVALID_QUANTITY without calling RPC', async () => {
+  const harness = makeHarness()
+  const res = await invoke(harness, { body: { symbol: 'AAPL', type: 'BUY', quantity: -1 } })
+  assert.equal(res.statusCode, 400)
+  assert.equal(res.body.error.code, 'INVALID_QUANTITY')
+  assert.equal(harness.calls.rpc.length, 0)
+})
+
+test('unexpected authentication exception returns safe HTTP 500 JSON', async () => {
+  const harness = makeHarness({ throwOnAuth: true })
+  const res = await invoke(harness)
+  assert.equal(res.statusCode, 500)
+  assert.equal(res.body.error.code, 'INTERNAL_SERVER_ERROR')
+  assert.doesNotMatch(JSON.stringify(res.body), /sensitive|database detail/)
+})
+
+test('unexpected Supabase lookup exception returns safe HTTP 500 JSON', async () => {
+  const harness = makeHarness({ throwOnLookup: true })
+  const res = await invoke(harness)
+  assert.equal(res.statusCode, 500)
+  assert.equal(res.body.error.code, 'INTERNAL_SERVER_ERROR')
+  assert.doesNotMatch(JSON.stringify(res.body), /sensitive|database detail/)
+})
+
+for (const [providerMessage, expectedStatus, expectedCode] of [
+  ['IDEMPOTENCY_KEY_REUSED sensitive database detail', 409, 'IDEMPOTENCY_KEY_REUSED'],
+  ['MISSING_MARKET_PRICE sensitive database detail', 409, 'PORTFOLIO_CHANGED_RETRY'],
+  ['INVALID_MARKET_PRICE sensitive provider detail', 502, 'INVALID_MARKET_PRICE'],
+]) {
+  test(`maps RPC error ${expectedCode} without exposing provider details`, async () => {
+    const harness = makeHarness({ rpcResult: { data: null, error: { message: providerMessage } } })
+    const res = await invoke(harness)
+    assert.equal(res.statusCode, expectedStatus)
+    assert.equal(res.body.error.code, expectedCode)
+    assert.doesNotMatch(JSON.stringify(res.body), /sensitive|database detail|provider detail/)
+  })
+}
