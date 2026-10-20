@@ -3,6 +3,8 @@ import './App.css'
 import History from './components/History'
 import Portfolio from './components/Portfolio'
 import Trade from './components/Trade'
+import Auth from './components/Auth'
+import { supabase } from './lib/supabaseClient'
 import { loadAccount, readAccount, toHistoryView, toPortfolioView, toValueSeries } from './db/account.js'
 
 const screens = [
@@ -43,6 +45,74 @@ function Icon({ name, ...props }) {
 }
 
 function App() {
+  const [session, setSession] = useState(null)
+  const [checkingSession, setCheckingSession] = useState(true)
+  const [authError, setAuthError] = useState('')
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  useEffect(() => {
+    let active = true
+    let sessionChanged = false
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!active) return
+      sessionChanged = true
+      setSession(nextSession)
+      setAuthError('')
+      setCheckingSession(false)
+    })
+
+    async function checkSession() {
+      try {
+        const { data, error } = await supabase.auth.getSession()
+        if (!active || sessionChanged) return
+        if (error) setAuthError('Unable to restore your session. Please sign in again.')
+        else setSession(data.session)
+      } catch {
+        if (active && !sessionChanged) setAuthError('Unable to check your session. Please sign in again.')
+      } finally {
+        if (active) setCheckingSession(false)
+      }
+    }
+    checkSession()
+    return () => {
+      active = false
+      subscription.unsubscribe()
+    }
+  }, [])
+
+  async function handleLogout() {
+    if (loggingOut) return
+    setLoggingOut(true)
+    setAuthError('')
+    try {
+      const { error } = await supabase.auth.signOut()
+      if (error) setAuthError('Unable to log out. Please try again.')
+      else setSession(null)
+    } catch {
+      setAuthError('Unable to log out. Check your connection and try again.')
+    } finally {
+      setLoggingOut(false)
+    }
+  }
+
+  if (checkingSession) {
+    return <main className="session-screen" aria-busy="true"><p role="status">Checking your session…</p></main>
+  }
+  if (!session) {
+    return (
+      <main className="session-screen">
+        {authError && <p className="session-error" role="alert">{authError}</p>}
+        <Auth onAuthenticated={(nextSession) => {
+          setSession(nextSession)
+          setAuthError('')
+        }} />
+      </main>
+    )
+  }
+  return <Workspace key={session.user.id} onLogout={handleLogout} loggingOut={loggingOut} authError={authError} />
+}
+
+function Workspace({ onLogout, loggingOut, authError }) {
   const [activeScreen, setActiveScreen] = useState('portfolio')
   const [account, setAccount] = useState(() => readAccount(window.localStorage))
   const screen = screens.find((item) => item.id === activeScreen)
@@ -66,7 +136,12 @@ function App() {
             <span className="brand-icon"><Icon name="brand" /></span>
             <span className="brand-name">Paper Trading Simulator</span>
           </div>
-          <span className="simulation-badge"><span />SIMULATION</span>
+          <div className="header-actions">
+            <span className="simulation-badge"><span />SIMULATION</span>
+            <button className="logout-button" type="button" disabled={loggingOut} onClick={onLogout}>
+              {loggingOut ? 'Logging out…' : 'Logout'}
+            </button>
+          </div>
         </div>
         <nav className="navigation" aria-label="Main navigation">
           <div className="navigation-inner">
@@ -87,6 +162,7 @@ function App() {
       </header>
 
       <main id="main-content" className="main-content">
+        {authError && <p className="session-error" role="alert">{authError}</p>}
         <div className="page-heading" aria-live="polite" aria-atomic="true">
           <p className="eyebrow">YOUR PRACTICE WORKSPACE</p>
           <h1>{screen.title}</h1>
