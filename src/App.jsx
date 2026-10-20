@@ -172,6 +172,7 @@ function HistoryRequest({ accessToken }) {
 
 function Workspace({ session, onLogout, loggingOut, authError }) {
   const [activeScreen, setActiveScreen] = useState('portfolio')
+  const [tradeRevision, setTradeRevision] = useState(0)
   const screen = screens.find((item) => item.id === activeScreen)
 
   return (
@@ -217,15 +218,16 @@ function Workspace({ session, onLogout, loggingOut, authError }) {
         </div>
         {activeScreen === 'portfolio' ? (
           <PortfolioRequest
-            key={session.access_token}
+            key={`${session.access_token}:${tradeRevision}`}
             accessToken={session.access_token}
             onStartTrading={() => setActiveScreen('trade')}
           />
-        ) : activeScreen === 'trade' ? (
-          <Trade />
-        ) : (
-          <HistoryRequest key={session.access_token} accessToken={session.access_token} />
-        )}
+        ) : activeScreen === 'history' ? (
+          <HistoryRequest key={`${session.access_token}:${tradeRevision}`} accessToken={session.access_token} />
+        ) : null}
+        <div hidden={activeScreen !== 'trade'}>
+          <Trade userId={session.user.id} accessToken={session.access_token} onTradeSuccess={() => setTradeRevision((value) => value + 1)} />
+        </div>
         <footer className="workspace-footer">
           <span className="footer-dot" />
           <p>Practice with confidence. This is a simulation environment.</p>
