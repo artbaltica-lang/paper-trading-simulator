@@ -36,7 +36,6 @@ function ChartPlaceholder({ id, title, description }) {
 // P/L needs its own backend time series and an agreed realized/total definition.
 // PriceChart's { symbol, currency, points: [{ time, price }] } is a stock price
 // series, so it must not be used as portfolio P/L. No random or derived fixtures.
-export default function History({ data = demoHistory }) {
 export default function History({ data = demoHistory, valueSeries = null }) {
   const { transactions, currency, realizedProfitLoss, isDemo } = data
   const money = new Intl.NumberFormat('en-US', { style: 'currency', currency })
@@ -111,7 +110,6 @@ export default function History({ data = demoHistory, valueSeries = null }) {
       </section>
 
       <div className="history-charts">
-        <ChartPlaceholder id="history-value-title" title="Portfolio value" description="Your portfolio value over time will appear here once historical values are available." />
         {valueSeries ? <ValueChart series={valueSeries} /> : <ChartPlaceholder id="history-value-title" title="Portfolio value" description="Your portfolio value over time will appear here once historical values are available." />}
         <ChartPlaceholder id="history-profit-title" title="Profit / Loss" description="Your performance over time will appear here once historical P/L is available." />
       </div>
