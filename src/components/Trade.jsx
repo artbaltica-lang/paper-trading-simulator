@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { demoPortfolio } from '../data/demoPortfolio'
 import { demoQuotes, tradeStocks } from '../data/demoTrade'
+import LivePriceChart from './charts/LivePriceChart.jsx'
 import './Trade.css'
 
 const currency = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' })
@@ -85,6 +86,7 @@ export default function Trade({ quotes = demoQuotes, cashBalance = demoPortfolio
           </div>
         </aside>
       </div>
+      <LivePriceChart key={symbol} symbol={symbol} />
     </div>
   )
 }

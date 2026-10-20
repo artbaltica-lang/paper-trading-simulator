@@ -1,4 +1,7 @@
+import { useEffect, useState } from 'react'
 import { demoHistory } from '../data/demoHistory'
+import { historyToValueSeries } from '../charts/series.js'
+import { checkPortfolioSeries } from '../contracts/formats.js'
 import { ValueChart } from './charts/index.js'
 import './History.css'
 
@@ -37,7 +40,30 @@ function ChartPlaceholder({ id, title, description }) {
 // PriceChart's { symbol, currency, points: [{ time, price }] } is a stock price
 // series, so it must not be used as portfolio P/L. No random or derived fixtures.
 export default function History({ data = demoHistory, valueSeries = null }) {
+  const [remoteSeries, setRemoteSeries] = useState(null)
   const { transactions, currency, realizedProfitLoss, isDemo } = data
+
+  useEffect(() => {
+    let active = true
+    const token = window.localStorage.getItem('paper-trading-access-token')
+    const headers = token ? { Authorization: `Bearer ${token}` } : {}
+    fetch('/api/history', { headers })
+      .then(async (response) => {
+        if (!response.ok) return null
+        return response.json()
+      })
+      .then((body) => {
+        if (!active || !body) return
+        const series = historyToValueSeries(body)
+        if (series && checkPortfolioSeries(series).ok) setRemoteSeries(series)
+      })
+      .catch(() => {})
+    return () => {
+      active = false
+    }
+  }, [])
+
+  const chartSeries = remoteSeries || valueSeries
   const money = new Intl.NumberFormat('en-US', { style: 'currency', currency })
   const hasRealizedProfitLoss = Number.isFinite(realizedProfitLoss)
 
@@ -110,7 +136,7 @@ export default function History({ data = demoHistory, valueSeries = null }) {
       </section>
 
       <div className="history-charts">
-        {valueSeries ? <ValueChart series={valueSeries} /> : <ChartPlaceholder id="history-value-title" title="Portfolio value" description="Your portfolio value over time will appear here once historical values are available." />}
+        {chartSeries ? <ValueChart series={chartSeries} /> : <ChartPlaceholder id="history-value-title" title="Portfolio value" description="Your portfolio value over time will appear here once historical values are available." />}
         <ChartPlaceholder id="history-profit-title" title="Profit / Loss" description="Your performance over time will appear here once historical P/L is available." />
       </div>
     </div>
