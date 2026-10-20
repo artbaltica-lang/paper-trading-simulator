@@ -81,6 +81,28 @@ Grafikui iš `snapshots` reikia dviejų laukų: `captured_at` ir `total_value`.
 
 `value` gali būti nulis. Kitos `snapshots` reikšmės grafikui netrukdo, jei šie du laukai lieka.
 
+## Trys 5 etapo grafikai
+
+2 žmogaus API jau grąžina tuos pačius `points`. 3 žmogaus komponentai skaito juos patys. Ekranų failų šie komponentai nekeičia: 1 žmogus juos įdeda į savo ekraną.
+
+| Grafikas | API | Komponentas |
+|---|---|---|
+| Akcijos kaina | `GET /api/prices?symbol=AAPL` | `LivePriceChart` |
+| Portfelio vertė | `GET /api/history` | `LiveValueChart` |
+| Pelnas / nuostolis | `GET /api/history/profit-loss` | `LiveProfitLossChart` |
+
+Kainų taško `time` gali būti diena `2026-10-16`. Komponentas iš jos padaro `2026-10-16T00:00:00.000Z`. P/L taško `value` gali būti neigiamas, todėl jam yra atskira `ProfitLossChart` serija. Portfelio vertės `value` lieka nulis arba teigiamas skaičius.
+
+Vertės ir P/L užklausoms reikia prisijungusio vartotojo tokeno. Kainų užklausai tokeno nereikia.
+
+```jsx
+import { LivePriceChart, LiveProfitLossChart, LiveValueChart } from './components/charts'
+
+<LivePriceChart key={symbol} symbol={symbol} />
+<LiveValueChart token={accessToken} />
+<LiveProfitLossChart token={accessToken} />
+```
+
 ## Prijungimas
 
 1 žmogus savo ekrane importuoja karkasą ir perduoda jau sutarties formos duomenis:
