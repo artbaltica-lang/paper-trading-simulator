@@ -42,7 +42,7 @@ export function checkPriceQuote(quote) {
   return result(errors)
 }
 
-function checkPoints(points, valueKey, allowZero) {
+function checkPoints(points, valueKey, allowZero, allowNegative = false) {
   const errors = []
   if (!Array.isArray(points)) {
     errors.push('points turi būti masyvas.')
@@ -56,7 +56,7 @@ function checkPoints(points, valueKey, allowZero) {
     }
     if (!isIsoTime(point.time)) errors.push(`points[${index}].time: netinkama data.`)
     const value = point[valueKey]
-    const valueOk = Number.isFinite(value) && (allowZero ? value >= 0 : value > 0)
+    const valueOk = Number.isFinite(value) && (allowNegative || (allowZero ? value >= 0 : value > 0))
     if (!valueOk) errors.push(`points[${index}].${valueKey}: netinkamas skaičius.`)
     const time = Date.parse(point.time)
     if (previous !== null && time < previous) {
@@ -87,6 +87,16 @@ export function checkPortfolioSeries(series) {
     errors.push('currency: trys didžiosios raidės.')
   }
   errors.push(...checkPoints(series.points, 'value', true))
+  return result(errors)
+}
+
+export function checkProfitLossSeries(series) {
+  const errors = []
+  if (!isObject(series)) return result(['P/L serija turi būti objektas.'])
+  if (typeof series.currency !== 'string' || !CURRENCY.test(series.currency)) {
+    errors.push('currency: trys didžiosios raidės.')
+  }
+  errors.push(...checkPoints(series.points, 'value', false, true))
   return result(errors)
 }
 
