@@ -1,5 +1,3 @@
-import { checkPortfolioSeries } from '../contracts/formats.js'
-
 export const ACCOUNT_KEY = 'paper-trading-account-v1'
 
 function roundMoney(value) {
@@ -196,10 +194,7 @@ export async function loadHistory({ accessToken, signal, fetchImpl = globalThis.
     return response.json()
   }
 
-  const [valueSeries, data] = await Promise.all([
-    request('/api/history'),
-    request('/api/transactions'),
-  ])
+  const data = await request('/api/transactions')
   const validTransaction = (row) => row
     && (typeof row.id === 'string' || Number.isFinite(row.id))
     && typeof row.symbol === 'string'
@@ -208,16 +203,14 @@ export async function loadHistory({ accessToken, signal, fetchImpl = globalThis.
     && Number.isFinite(row.price) && row.price > 0
     && typeof row.createdAt === 'string' && Number.isFinite(Date.parse(row.createdAt))
 
-  if (!checkPortfolioSeries(valueSeries).ok
-    || !Array.isArray(data?.transactions) || !data.transactions.every(validTransaction)) {
+  if (!Array.isArray(data?.transactions) || !data.transactions.every(validTransaction)) {
     throw new Error('The server returned invalid history data. Please try again.')
   }
 
   return {
-    valueSeries,
     history: {
       isDemo: false,
-      currency: valueSeries.currency,
+      currency: 'USD', // Transactions API uses USD and does not return a currency field.
       realizedProfitLoss: null,
       transactions: data.transactions.map((row) => ({
         id: row.id,

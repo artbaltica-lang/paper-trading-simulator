@@ -1,5 +1,5 @@
 import { demoHistory } from '../data/demoHistory'
-import { ValueChart } from './charts/index.js'
+import { LiveProfitLossChart } from './charts/index.js'
 import './History.css'
 
 const dateFormat = new Intl.DateTimeFormat('en-GB', {
@@ -8,35 +8,10 @@ const dateFormat = new Intl.DateTimeFormat('en-GB', {
 })
 const quantityFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 8 })
 
-function ChartPlaceholder({ id, title, description }) {
-  return (
-    <section className="workspace-card history-chart" aria-labelledby={id}>
-      <div className="card-heading">
-        <h2 id={id}>{title}</h2>
-        <span className="coming-soon">Coming soon</span>
-      </div>
-      <div className="history-chart-placeholder">
-        <span className="history-chart-icon" aria-hidden="true">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M4 4v16h16M8 15v-3M12 15V8M16 15v-5" />
-          </svg>
-        </span>
-        <h3>Waiting for historical data</h3>
-        <p>{description}</p>
-      </div>
-    </section>
-  )
-}
-
 // Pass a complete view model when the API is connected; omitting data uses
 // explicitly labelled demo fixtures. An empty response uses transactions: [].
 // The transactions array must contain the full history for the total count.
-// Future charts: backend PortfolioSeries = { currency, points: [{ time, value }] }
-// goes to ValueChart from src/components/charts once that export exists.
-// P/L needs its own backend time series and an agreed realized/total definition.
-// PriceChart's { symbol, currency, points: [{ time, price }] } is a stock price
-// series, so it must not be used as portfolio P/L. No random or derived fixtures.
-export default function History({ data = demoHistory, valueSeries = null }) {
+export default function History({ data = demoHistory, accessToken }) {
   const { transactions, currency, realizedProfitLoss, isDemo } = data
   const money = new Intl.NumberFormat('en-US', { style: 'currency', currency })
   const hasRealizedProfitLoss = Number.isFinite(realizedProfitLoss)
@@ -110,8 +85,8 @@ export default function History({ data = demoHistory, valueSeries = null }) {
       </section>
 
       <div className="history-charts">
-        {valueSeries ? <ValueChart series={valueSeries} /> : <ChartPlaceholder id="history-value-title" title="Portfolio value" description="Your portfolio value over time will appear here once historical values are available." />}
-        <ChartPlaceholder id="history-profit-title" title="Profit / Loss" description="Your performance over time will appear here once historical P/L is available." />
+        <p className="history-data-note">Total portfolio value change since the starting balance, including unrealized gains and losses.</p>
+        <LiveProfitLossChart key={accessToken} token={accessToken} />
       </div>
     </div>
   )

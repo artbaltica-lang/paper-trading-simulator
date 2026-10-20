@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { loadPortfolio } from '../db/account.js'
+import { LivePriceChart } from './charts/index.js'
 import { checkPendingTrade, pendingTradeKey, readPendingTrade, removePendingTrade, savePendingTrade } from '../trading/pendingTrade.js'
 import './Trade.css'
 
@@ -298,6 +299,7 @@ export default function Trade({ userId, accessToken, onTradeSuccess }) {
           </div>
         </aside>
       </div>
+      <LivePriceChart key={symbol} symbol={symbol} />
     </div>
   )
 }

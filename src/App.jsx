@@ -138,7 +138,7 @@ function PortfolioRequest({ accessToken, onStartTrading }) {
       </section>
     )
   }
-  return <Portfolio onStartTrading={onStartTrading} portfolio={result.data} note="Your account · Backend data · Virtual funds · USD" />
+  return <Portfolio accessToken={accessToken} onStartTrading={onStartTrading} portfolio={result.data} note="Your account · Backend data · Virtual funds · USD" />
 }
 
 function HistoryRequest({ accessToken }) {
@@ -167,7 +167,7 @@ function HistoryRequest({ accessToken }) {
       </section>
     )
   }
-  return <History data={result.data.history} valueSeries={result.data.valueSeries} />
+  return <History accessToken={accessToken} data={result.data.history} />
 }
 
 function Workspace({ session, onLogout, loggingOut, authError }) {
