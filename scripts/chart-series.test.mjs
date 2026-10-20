@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import { checkPortfolioSeries, checkPriceSeries, checkProfitLossSeries } from '../src/contracts/formats.js'
 import { historyToValueSeries, pricesToPriceSeries, profitLossToSeries, quoteToPriceSeries } from '../src/charts/series.js'
+import { formatChartTime, formatChartUsd } from '../src/components/charts/format.js'
 
 test('GET /api/quote tampa PriceChart serija', () => {
   const series = quoteToPriceSeries({
@@ -60,4 +61,11 @@ test('GET /api/history/profit-loss tampa P/L serija', () => {
   assert.equal(checkProfitLossSeries(series).ok, true)
   assert.equal(checkPortfolioSeries(series).ok, false)
   assert.equal(profitLossToSeries({ currency: 'USD', points: [{ time: 'bad', value: 1 }] }), null)
+})
+
+test('grafiko ašys nerodo ISO ir nekeičia nulio', () => {
+  assert.equal(formatChartUsd(0), '$0.00')
+  assert.equal(formatChartUsd(-40.5), '-$40.50')
+  assert.equal(formatChartTime('2026-10-19T00:00:00.000Z'), '19 Oct 2026')
+  assert.equal(formatChartTime('2026-10-20T17:23:33.511Z'), '20 Oct 2026, 17:23 UTC')
 })

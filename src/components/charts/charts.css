@@ -1,4 +1,6 @@
 .chart-frame {
+  width: 100%;
+  max-width: 100%;
   background: #fff;
   border: 1px solid #e3e9f2;
   border-radius: 16px;
@@ -21,8 +23,7 @@
 }
 
 .chart-frame-heading span,
-.chart-empty,
-.chart-last span {
+.chart-empty {
   color: #7a8597;
   font-size: 12px;
 }
@@ -30,7 +31,7 @@
 .chart-empty,
 .chart-plot {
   min-height: 180px;
-  padding: 24px 20px;
+  padding: 16px 12px 20px;
 }
 
 .chart-empty {
@@ -39,10 +40,39 @@
   text-align: center;
 }
 
+.chart-body,
+.chart-x {
+  display: grid;
+  grid-template-columns: minmax(76px, max-content) minmax(0, 1fr);
+  gap: 8px;
+  align-items: stretch;
+}
+
+.chart-y {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 160px;
+  color: #7a8597;
+  font-size: 12px;
+  line-height: 1.2;
+  text-align: right;
+}
+
+.chart-y.is-flat {
+  justify-content: center;
+}
+
+.chart-canvas {
+  position: relative;
+  min-width: 0;
+  height: 160px;
+}
+
 .chart-plot svg {
   display: block;
   width: 100%;
-  height: 140px;
+  height: 100%;
 }
 
 .chart-plot path {
@@ -54,13 +84,108 @@
   vector-effect: non-scaling-stroke;
 }
 
-.chart-last {
+.chart-readout {
   display: flex;
   justify-content: space-between;
   gap: 12px;
-  margin-top: 12px;
+}
+
+.chart-x {
+  margin-top: 8px;
+  color: #7a8597;
+  font-size: 12px;
+}
+
+.chart-x-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.chart-x-labels.is-single {
+  justify-content: center;
+}
+
+.chart-readout {
+  margin: 10px 0 0;
   font-size: 14px;
   font-weight: 600;
+}
+
+.chart-readout span {
+  color: #7a8597;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.chart-dot {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  transform: translate(-50%, -50%);
+  touch-action: manipulation;
+}
+
+.chart-dot::after {
+  content: "";
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 12px auto;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #2563eb;
+  box-shadow: 0 0 0 1px #2563eb;
+}
+
+.chart-dot.is-active::after,
+.chart-dot:focus-visible::after {
+  width: 10px;
+  height: 10px;
+  margin: 11px auto;
+}
+
+.chart-dot:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+@media (max-width: 640px) {
+  .chart-frame-heading,
+  .chart-empty,
+  .chart-plot {
+    padding-right: 12px;
+    padding-left: 12px;
+  }
+
+  .chart-body,
+  .chart-x {
+    grid-template-columns: minmax(68px, max-content) minmax(0, 1fr);
+    gap: 6px;
+  }
+
+  .chart-y,
+  .chart-x {
+    font-size: 11px;
+  }
+
+  .chart-canvas,
+  .chart-y {
+    min-height: 140px;
+    height: 140px;
+  }
+
+  .chart-readout {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
 }
 
 .chart-status {
