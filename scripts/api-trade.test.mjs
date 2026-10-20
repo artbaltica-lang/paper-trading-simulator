@@ -22,9 +22,11 @@ const validResponse = (overrides = {}) => ({
   ...overrides,
 })
 
-function makeHarness({ authResult, quoteResult, priorTransaction = null, lookupError = null, rpcResult, positionsError = null, throwOnAuth = false, throwOnLookup = false } = {}) {
-  const calls = { auth: 0, quote: [], rpc: [], lookup: 0 }
+function makeHarness({ authResult, quoteResult, priorTransaction = null, priorTransactionsByUser = null, lookupError = null, rpcResult, rpcHandler = null, positionsError = null, throwOnAuth = false, throwOnLookup = false } = {}) {
+  const calls = { auth: 0, quote: [], rpc: [], lookup: 0, transactionFilters: [] }
   const authentication = authResult ?? { supabase: null, user }
+  let lookupUserId = null
+  let lookupKey = null
   const positionsQuery = {
     select() { return this },
     eq() { return this },
@@ -32,11 +34,19 @@ function makeHarness({ authResult, quoteResult, priorTransaction = null, lookupE
   }
   const transactionQuery = {
     select() { return this },
-    eq() { return this },
+    eq(column, value) {
+      calls.transactionFilters.push([column, value])
+      if (column === 'user_id') lookupUserId = value
+      if (column === 'idempotency_key') lookupKey = value
+      return this
+    },
     maybeSingle() {
       calls.lookup += 1
       if (throwOnLookup) throw new Error('sensitive database detail')
-      return Promise.resolve({ data: priorTransaction, error: lookupError })
+      const data = priorTransactionsByUser
+        ? priorTransactionsByUser[lookupUserId]?.[lookupKey] ?? null
+        : priorTransaction
+      return Promise.resolve({ data, error: lookupError })
     },
   }
   const supabase = {
@@ -50,17 +60,21 @@ function makeHarness({ authResult, quoteResult, priorTransaction = null, lookupE
         },
         rpc(name, args) {
           calls.rpc.push({ name, args })
+          if (rpcHandler) return Promise.resolve(rpcHandler(name, args, calls.rpc.length))
           return Promise.resolve(rpcResult ?? { data: validResponse(), error: null })
         },
       }
     },
   }
 
-  mock.module(authUrl, { namedExports: { authenticateUser: async () => {
+  mock.module(authUrl, { namedExports: { authenticateUser: async (req) => {
     calls.auth += 1
     if (throwOnAuth) throw new Error('sensitive authentication detail')
     if (authResult?.error) return authResult
-    return { supabase, user }
+    const authenticatedUser = req.headers?.['x-test-user'] === 'second-user'
+      ? { id: 'user-test-2' }
+      : user
+    return { supabase, user: authenticatedUser }
   } } })
   mock.module(quotesUrl, { namedExports: { getQuote: async (symbol) => {
     calls.quote.push(symbol)
@@ -99,6 +113,80 @@ test('successful BUY returns validated result and calls RPC with BUY parameters'
   assert.equal(res.body.cashBalance, 9900)
   assert.equal(harness.calls.rpc[0].args.p_type, 'BUY')
   assert.equal(harness.calls.rpc[0].args.p_user_id, user.id)
+})
+
+test('same Idempotency-Key replays a stored SELL without quote or RPC', async () => {
+  const prior = {
+    id: 'transaction-sell-prior', symbol: 'AAPL', type: 'SELL', quantity: 1,
+    price: 100, total: 100, created_at: '2026-10-20T10:00:00.000Z',
+    cash_balance_after: 10100, snapshot_id: 'snapshot-sell-prior',
+    snapshot_portfolio_value_after: 0, snapshot_total_value_after: 10100,
+    snapshot_created_at: '2026-10-20T10:00:00.000Z',
+    market_prices_after: { AAPL: { price: 100, latestTradingDay: '2026-10-20' } },
+  }
+  const harness = makeHarness({ priorTransaction: prior })
+  const res = await invoke(harness, { body: { symbol: 'AAPL', type: 'SELL', quantity: 1 } })
+  assert.equal(res.statusCode, 200)
+  assert.equal(res.body.replayed, true)
+  assert.equal(res.body.transaction.id, 'transaction-sell-prior')
+  assert.equal(res.body.transaction.type, 'SELL')
+  assert.equal(harness.calls.quote.length, 0)
+  assert.equal(harness.calls.rpc.length, 0)
+})
+
+test('same key is scoped to authenticated user and does not expose another user transaction', async () => {
+  const firstUserPrior = {
+    id: 'user-one-private-transaction', symbol: 'AAPL', type: 'BUY', quantity: 1,
+    price: 100, total: 100, created_at: '2026-10-20T10:00:00.000Z',
+    cash_balance_after: 9900, snapshot_id: 'snapshot-user-one',
+    snapshot_portfolio_value_after: 100, snapshot_total_value_after: 10000,
+    snapshot_created_at: '2026-10-20T10:00:00.000Z',
+    market_prices_after: { AAPL: { price: 100, latestTradingDay: '2026-10-20' } },
+  }
+  const harness = makeHarness({ priorTransactionsByUser: { [user.id]: { [validKey]: firstUserPrior } } })
+  const firstRes = await invoke(harness)
+  const secondRes = await invoke(harness, {
+    headers: { 'idempotency-key': validKey, 'x-test-user': 'second-user' },
+  })
+
+  assert.equal(firstRes.statusCode, 200)
+  assert.equal(firstRes.body.transaction.id, 'user-one-private-transaction')
+  assert.equal(firstRes.body.replayed, true)
+  assert.equal(secondRes.statusCode, 200)
+  assert.notEqual(secondRes.body.transaction.id, 'user-one-private-transaction')
+  assert.equal(secondRes.body.replayed, false)
+  assert.deepEqual(harness.calls.transactionFilters.filter(([column]) => column === 'user_id'), [
+    ['user_id', 'user-test-1'], ['user_id', 'user-test-2'],
+  ])
+  assert.equal(harness.calls.rpc.length, 1)
+  assert.equal(harness.calls.rpc[0].args.p_user_id, 'user-test-2')
+})
+
+test('concurrent identical requests that both miss lookup rely on RPC idempotent replay', async () => {
+  let rpcCalls = 0
+  const harness = makeHarness({
+    rpcHandler: (_name, _args, callNumber) => {
+      rpcCalls += 1
+      return { data: validResponse({ replayed: callNumber > 1 }), error: null }
+    },
+  })
+  const request = {
+    headers: { 'idempotency-key': validKey },
+    body: { symbol: 'AAPL', type: 'BUY', quantity: 1 },
+  }
+  const [firstRes, secondRes] = await Promise.all([
+    invoke(harness, request),
+    invoke(harness, request),
+  ])
+
+  assert.equal(harness.calls.lookup, 2)
+  assert.equal(harness.calls.rpc.length, 2)
+  assert.equal(rpcCalls, 2)
+  assert.deepEqual(harness.calls.rpc.map((call) => call.args.p_idempotency_key), [validKey, validKey])
+  assert.deepEqual(harness.calls.rpc.map((call) => call.args.p_user_id), [user.id, user.id])
+  assert.deepEqual([firstRes, secondRes].map((res) => res.statusCode), [200, 200])
+  assert.deepEqual([firstRes, secondRes].map((res) => res.body.transaction.id), ['transaction-1', 'transaction-1'])
+  assert.deepEqual([firstRes, secondRes].map((res) => res.body.replayed).sort(), [false, true])
 })
 
 test('quantity 1 is accepted and passed to the RPC', async () => {
